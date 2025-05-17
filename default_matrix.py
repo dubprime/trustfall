@@ -38,7 +38,7 @@ if st:
 
     st.sidebar.header("Portfolio Parameters")
     initial_capital = st.sidebar.number_input("Initial Capital ($)", value=100000)
-    monthly_interest = st.sidebar.number_input("Monthly Interest (%)", value=3.0)
+    monthly_interest = st.sidebar.number_input("Monthly Interest (%)", value=12.0)
     num_months = st.sidebar.slider("Duration (Months)", 1, 60, 12)
 
     st.sidebar.header("Default Rates at Maturity")
@@ -80,10 +80,8 @@ if st:
         # 2-month amortizing
         P2 = new[1]
         half = P2 / 2
-        # first payment at t+1
         int2a = r * P2
         payment_schedule[t + 1] += half + int2a
-        # second payment at t+2 (with default on remaining)
         out2 = P2 - half
         loss2 = d[1] * out2
         rec2 = out2 - loss2
@@ -96,14 +94,11 @@ if st:
         # 3-month amortizing
         P3 = new[2]
         third = P3 / 3
-        # payment 1 at t+1
         int3a = r * P3
         payment_schedule[t + 1] += third + int3a
-        # payment 2 at t+2
         out3_2 = P3 - third
         int3b = r * out3_2
         payment_schedule[t + 2] += third + int3b
-        # payment 3 at t+3 (with default on remaining)
         out3_3 = P3 - 2 * third
         loss3 = d[2] * out3_3
         rec3 = out3_3 - loss3
@@ -117,23 +112,20 @@ if st:
         interest_trace.append(mi)
         net_reinvest_trace.append(mr)
 
-        # --- Build outstanding by bucket for the active simulation window (0…num_months-1) ---
+    # --- Build outstanding by bucket for active window ---
     months = np.arange(num_months)
     out_1 = np.zeros(num_months, float)
     out_2 = np.zeros(num_months, float)
     out_3 = np.zeros(num_months, float)
 
     for t in months:
-        # 1-month outstanding only at origination
         out_1[t] = new_by_t[t, 0]
-        # 2-month amortizing outstanding
         for j in range(max(0, t - 1), t + 1):
             age = t - j
             if age == 0:
                 out_2[t] += new_by_t[j, 1]
             elif age == 1:
                 out_2[t] += new_by_t[j, 1] * 0.5
-        # 3-month amortizing outstanding
         for j in range(max(0, t - 2), t + 1):
             age = t - j
             if age == 0:
@@ -153,7 +145,6 @@ if st:
         "3-Month": out_3,
         "Total": out_total
     })
-    # metrics months align with cash flows at t=1…num_months
     metrics_months = np.arange(1, num_months + 1)
     df_metrics = pd.DataFrame({
         "Month": metrics_months,
@@ -169,7 +160,49 @@ if st:
     st.subheader("Defaults & Cash-Flows")
     st.dataframe(df_metrics.style.format("{:.2f}"))
 
-    # --- Private Credit Dashboard (MOIC focus) ---
+    # --- Detailed Cashflow Breakouts ---
+    # --- Prepare breakout DataFrames ---
+    df_originations = pd.DataFrame(
+        new_by_t,
+        columns=["1-Month Orig", "2-Month Orig", "3-Month Orig"]
+    )
+    df_originations["Month"] = np.arange(num_months)
+
+    df_inflows = pd.DataFrame({
+        "Month": np.arange(len(payment_schedule)),
+        "Cash Inflow": payment_schedule
+    })
+
+    df_cumulative = df_metrics.copy()
+    df_cumulative["Cum Defaults"] = df_cumulative["Defaults"].cumsum()
+    df_cumulative["Cum Interest"] = df_cumulative["Interest"].cumsum()
+    df_cumulative["Cum Reinvested"] = df_cumulative["Reinvested"].cumsum()
+
+    # --- Detailed Cashflow Breakouts: Guided View ---
+    st.subheader("Step 1: New Loan Originations by Tenor")
+    with st.expander("Show detailed originations table and chart", expanded=False):
+        st.table(df_originations.set_index("Month").style.format("{:,.2f}"))
+        st.bar_chart(df_originations.set_index("Month"))
+
+    st.subheader("Step 2: Scheduled Cash Inflows Over Time")
+    with st.expander("Show cash inflow schedule and cumulative trend", expanded=False):
+        st.table(df_inflows.set_index("Month").style.format("{:,.2f}"))
+        inflow_cum = df_inflows.set_index("Month")["Cash Inflow"].cumsum()
+        st.line_chart(inflow_cum)
+
+    st.subheader("Step 3: Monthly Cashflow Components")
+    with st.expander("View Defaults, Interest, and Reinvestment breakdown", expanded=False):
+        st.table(df_metrics.set_index("Month").style.format("{:,.2f}"))
+        comp = df_metrics.set_index("Month")[ ["Defaults", "Interest", "Reinvested"] ]
+        st.area_chart(comp)
+
+    st.subheader("Step 4: Cumulative Cashflow Tally")
+    with st.expander("See how each component builds to MOIC", expanded=False):
+        st.table(df_cumulative.set_index("Month").style.format("{:,.2f}"))
+        cum = df_cumulative.set_index("Month")[ ["Cum Defaults","Cum Interest","Cum Reinvested"] ]
+        st.area_chart(cum)
+
+    # --- Private Credit Dashboard (MOIC focus) --- (MOIC focus) ---
     total_int = sum(interest_trace)
     total_def = sum(defaults_trace)
     total_reinv = sum(net_reinvest_trace)

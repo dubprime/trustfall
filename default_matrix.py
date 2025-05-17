@@ -29,18 +29,42 @@ if st:
     # --- App Title ---
     st.title("Loan Portfolio Simulator with Amortizing Loans & Breakouts")
 
-    # --- Sidebar Inputs ---
+                    # --- Sidebar Inputs ---
     st.sidebar.header("Loan Allocation Settings")
+        # Sliders for 1- and 2-month to drive allocations
     alloc_1 = st.sidebar.slider("1-Month Allocation (%)", 0, 100, 50)
-    alloc_2 = st.sidebar.slider("2-Month Allocation (%)", 0, 100 - alloc_1, 25)
+    max_alloc_2 = max(0, 100 - alloc_1)
+    # Only show 2-month slider when there's room
+    if max_alloc_2 > 0:
+        alloc_2 = st.sidebar.slider("2-Month Allocation (%)", 0, max_alloc_2, min(25, max_alloc_2))
+    else:
+        alloc_2 = 0
+    # Compute 3-Month as remainder
     alloc_3 = 100 - alloc_1 - alloc_2
-    st.sidebar.markdown(f"**3-Month Allocation:** {alloc_3}%")
 
+    # --- Visual Allocation Pie Chart ---
+    # summarize allocations in a donut chart for clarity
+    import plotly.express as px
+    df_alloc = pd.DataFrame({
+        "Tenor": ["1-Month", "2-Month", "3-Month"],
+        "Allocation": [alloc_1, alloc_2, alloc_3]
+    })
+    fig_alloc = px.pie(
+        df_alloc,
+        names="Tenor",
+        values="Allocation",
+        title="Allocation Mix",
+        color_discrete_sequence=["#e45756", "#4c78a8", "#f58518"]
+    )
+    st.sidebar.plotly_chart(fig_alloc, use_container_width=True)
+
+    # --- Portfolio Parameters ---
     st.sidebar.header("Portfolio Parameters")
     initial_capital = st.sidebar.number_input("Initial Capital ($)", value=100000)
-    monthly_interest = st.sidebar.number_input("Monthly Interest (%)", value=12.0)
+    monthly_interest = st.sidebar.number_input("Monthly Interest (%)", value=3.0)
     num_months = st.sidebar.slider("Duration (Months)", 1, 60, 12)
 
+    # --- Default Rates at Maturity ---
     st.sidebar.header("Default Rates at Maturity")
     default_1 = st.sidebar.slider("1-Month Default (%)", 0.0, 100.0, 10.0)
     default_2 = st.sidebar.slider("2-Month Default (%)", 0.0, 100.0, 10.0)

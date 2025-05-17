@@ -23,7 +23,8 @@ if st:
     )
 
     # Title
-    st.title("Loan Portfolio Simulator with Plotly Visualizations & Guided Breakouts")
+
+    st.title("DubPrime.com Loan Portfolio Simulator with Amortizing Loans & Guided Breakouts")
 
     # Sidebar: Allocation Settings
     st.sidebar.header("Loan Allocation Settings")

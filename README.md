@@ -143,3 +143,6 @@ Shawshank Redemption Part 2
 "the kingdom of God is within you" from Luke 17:21 suggests that goodness and the potential for the kingdom of God are present within each person, not just in external events or locations. This implies that individuals have the capacity to experience and embody the divine within themselves." -Luke 17:21
 
 https://youtu.be/w8HdOHrc3OQ?si=kd8mCQA6vD2ZnGLg&t=151 
+
+![image](https://github.com/user-attachments/assets/2e3465e0-ff01-4725-a6db-9b55aca44014)
+

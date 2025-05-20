@@ -22,6 +22,7 @@ The simulator generates detailed visualizations of portfolio performance, cash f
 - **Default Visualization**: See the impact of defaults on portfolio performance
 - **Advanced Financial Metrics**: Calculate IRR, WAL, duration, and risk-adjusted returns
 - **Stress Testing**: Model portfolio performance under various economic scenarios
+- **Robust IRR Calculations**: Accurately handle extreme stress scenarios with novel estimation techniques
 
 ## Financial Validation Suite
 
@@ -60,6 +61,30 @@ Analyze portfolio performance under various scenarios:
 - **Combined Scenarios**: Multiple simultaneous stresses
 - **Sensitivity Analysis**: Parameter-specific impact testing
 
+### Robust Stress Scenario IRR Calculation
+
+The simulator features a sophisticated multi-tiered approach to IRR calculation in extreme stress scenarios:
+
+1. **Standard IRR Calculation**: First attempts the conventional IRR calculation using `numpy_financial.irr`
+2. **Alternative Cash Flow Analysis**: If the standard approach fails, tries a restructured cash flow analysis
+3. **MOIC-Based Estimation**: For severely distressed portfolios, estimates IRR using a modified MOIC approach
+4. **Default-Rate Scaled Estimations**: In catastrophic scenarios, uses default rate scaling to provide meaningful negative IRR values
+
+This advanced approach ensures that even in extreme stress cases where conventional IRR calculation fails (due to all-negative cash flows), the simulator still provides financially meaningful metrics, avoiding "N/A" or "Not calculable" results.
+
+### Improved Financial Reporting
+
+Stress test reports now use descriptive financial terminology for extreme scenarios:
+
+- **Positive Returns**: Shown as standard percentages (e.g., "16.17%")
+- **Minor Losses**: Displayed as "Loss (-X.XX%)" 
+- **Significant Losses**: Shown as "Major Loss (-XX.X%)"
+- **Severe Losses**: Displayed as "Severe Loss (-XX%)"
+- **Catastrophic Losses**: Indicated as "Catastrophic (-XX%)"
+- **Total Losses**: Clearly labeled as "Total Loss" rather than "-∞"
+
+This improved terminology matches how credit analysts and portfolio managers would describe portfolio performance in real-world stressed environments.
+
 ## Getting Started
 
 1. Install dependencies:
@@ -69,7 +94,7 @@ Analyze portfolio performance under various scenarios:
 
 2. Run the simulator:
    ```
-   streamlit run streamlit_app.py
+   streamlit run streamlit_stress_test_app.py
    ```
 
 3. Adjust parameters in the sidebar and explore the visualizations
@@ -87,6 +112,7 @@ python -m unittest integration_test.py
 - Streamlit
 - Pandas
 - NumPy
+- NumPy-Financial
 - Plotly
 - Matplotlib
 

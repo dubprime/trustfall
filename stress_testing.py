@@ -71,16 +71,23 @@ def run_stress_test(base_params: InputParams, scenario: StressTestScenario) -> S
     Returns:
         Stress test results with comparison metrics
     """
+    print(f"\n=== Running stress test for scenario: {scenario.name} ===")
+    print(f"Scenario details: {scenario}")
+    
     # Run base case simulation
+    print("Running base case simulation...")
     base_sim = run_simulation(base_params)
     base_metrics = compute_extended_metrics(base_params, base_sim)
     
     # Apply stress scenario and run stressed simulation
+    print("Applying stress scenario and running stressed simulation...")
     stressed_params = apply_stress_scenario(base_params, scenario)
+    print(f"Stressed parameters: {stressed_params}")
     stressed_sim = run_simulation(stressed_params)
     stressed_metrics = compute_extended_metrics(stressed_params, stressed_sim)
     
     # Calculate impact on key metrics
+    print("Calculating impact on key metrics...")
     impact_summary = {
         "IRR Change (%)": calculate_percentage_change(
             stressed_metrics.portfolio_irr, base_metrics.portfolio_irr),
@@ -93,6 +100,8 @@ def run_stress_test(base_params: InputParams, scenario: StressTestScenario) -> S
         "Cash Flow Volatility Change (%)": calculate_percentage_change(
             stressed_metrics.volatility, base_metrics.volatility)
     }
+    
+    print(f"Impact summary: {impact_summary}")
     
     return StressTestResult(
         scenario=scenario,
@@ -119,25 +128,94 @@ def run_multiple_stress_tests(base_params: InputParams,
     return results
 
 def calculate_percentage_change(new_value: float, old_value: float) -> float:
-    """Calculate percentage change between two values."""
-    if old_value == 0:
-        return float('inf') if new_value > 0 else float('-inf') if new_value < 0 else 0
-    return 100 * (new_value - old_value) / abs(old_value)
+    """
+    Calculate percentage change between two values.
+    
+    Args:
+        new_value: The new value after change
+        old_value: The original value before change
+        
+    Returns:
+        Percentage change (as a percentage, not decimal)
+    """
+    # Debug info
+    print(f"Calculating percentage change: new={new_value}, old={old_value}")
+    
+    # Handle NaN inputs
+    if np.isnan(new_value) or np.isnan(old_value):
+        print("ERROR: NaN value detected in percentage change calculation")
+        return np.nan
+    
+    # Handle infinity inputs
+    if np.isinf(new_value) or np.isinf(old_value):
+        if np.isinf(old_value) and np.isinf(new_value):
+            # Both infinity
+            if (old_value > 0 and new_value > 0) or (old_value < 0 and new_value < 0):
+                # Same sign, no change
+                return 0.0
+            else:
+                # Different signs, extreme change
+                return 1000.0 if new_value > 0 else -1000.0
+        elif np.isinf(new_value):
+            # New value is infinity
+            return 1000.0 if new_value > 0 else -1000.0
+        else:
+            # Old value is infinity
+            return -1000.0 if old_value > 0 else 1000.0
+    
+    # Handle zero or near-zero old value
+    if abs(old_value) < 0.0001:
+        if abs(new_value) < 0.0001:
+            # Both values are effectively zero
+            print("Both values effectively zero, returning 0% change")
+            return 0.0
+        else:
+            # From zero to non-zero - calculate sign and cap magnitude
+            print(f"Base value near zero, returning capped value for {new_value}")
+            direction = 1.0 if new_value > 0 else -1.0
+            magnitude = min(1000.0, 100.0 * abs(new_value) / 0.0001)
+            return direction * magnitude
+    
+    # Standard percentage change calculation with caps
+    raw_pct_change = 100.0 * (new_value - old_value) / abs(old_value)
+    
+    # Cap extreme values for better display and stability
+    if abs(raw_pct_change) > 1000.0:
+        print(f"Capping extreme percentage change: {raw_pct_change}")
+        capped_pct_change = 1000.0 if raw_pct_change > 0 else -1000.0
+        print(f"Capped percentage change: {capped_pct_change}%")
+        return capped_pct_change
+    
+    print(f"Calculated percentage change: {raw_pct_change}%")
+    return raw_pct_change
 
 def calculate_average_percentage_change(new_dict: Dict[int, float], 
                                       old_dict: Dict[int, float],
                                       invert: bool = False) -> float:
     """Calculate average percentage change across dictionary values."""
+    print(f"Calculating average percentage change between: {old_dict} and {new_dict}")
     changes = []
+    
     for key in new_dict:
         if key in old_dict:
+            # Skip NaN values
+            if np.isnan(new_dict[key]) or np.isnan(old_dict[key]):
+                print(f"Skipping NaN value for key {key}")
+                continue
+                
             if invert:
                 # For metrics where decrease is negative impact (like recovery rates)
                 changes.append(calculate_percentage_change(old_dict[key], new_dict[key]))
             else:
                 changes.append(calculate_percentage_change(new_dict[key], old_dict[key]))
     
-    return sum(changes) / len(changes) if changes else 0
+    if not changes:
+        print("No valid changes to average, returning NaN")
+        return np.nan
+        
+    avg_change = sum(changes) / len(changes)
+    print(f"Average percentage change: {avg_change}%")
+    return avg_change
 
 def get_predefined_scenarios() -> List[StressTestScenario]:
     """
@@ -224,25 +302,131 @@ def generate_stress_test_report(base_params: InputParams,
     Returns:
         DataFrame with stress test results
     """
+    print("Generating stress test report...")
     report_data = []
     
     for scenario_name, result in results.items():
+        print(f"Formatting results for scenario: {scenario_name}")
         row = {
             "Scenario": scenario_name,
             "Description": result.scenario.description,
             "Default Multiplier": result.scenario.default_rate_multiplier,
             "Interest Rate Delta": f"{result.scenario.interest_rate_delta * 100:+.2f}%",
-            "Portfolio IRR": f"{result.stressed_metrics.portfolio_irr * 100:.2f}%",
-            "IRR Change": f"{result.impact_summary['IRR Change (%)']:.2f}%",
-            "Portfolio WAL": f"{result.stressed_metrics.portfolio_wal:.2f} months",
-            "WAL Change": f"{result.impact_summary['WAL Change (%)']:.2f}%",
-            "Default Impact": f"{result.impact_summary['Default Impact (%)']:.2f}%",
-            "Volatility": f"{result.stressed_metrics.volatility:.2f}",
-            "Volatility Change": f"{result.impact_summary['Cash Flow Volatility Change (%)']:.2f}%"
         }
+        
+        # Format portfolio IRR with better error handling and more meaningful values for credit analysis
+        if np.isnan(result.stressed_metrics.portfolio_irr):
+            # In a real credit scenario, this would likely be a deeply distressed portfolio
+            row["Portfolio IRR"] = "Not calculable"
+        elif np.isinf(result.stressed_metrics.portfolio_irr):
+            if result.stressed_metrics.portfolio_irr > 0:
+                row["Portfolio IRR"] = "∞"
+            else:
+                row["Portfolio IRR"] = "Total Loss"  # More meaningful than -∞
+        elif result.stressed_metrics.portfolio_irr < -0.75:
+            # For catastrophic negative IRRs (worse than -75% monthly)
+            row["Portfolio IRR"] = f"Catastrophic ({result.stressed_metrics.portfolio_irr*100:.0f}%)"
+        elif result.stressed_metrics.portfolio_irr < -0.40:
+            # For very negative IRRs
+            row["Portfolio IRR"] = f"Severe Loss ({result.stressed_metrics.portfolio_irr*100:.0f}%)"
+        elif result.stressed_metrics.portfolio_irr < -0.15:
+            # For significantly negative IRRs
+            row["Portfolio IRR"] = f"Major Loss ({result.stressed_metrics.portfolio_irr*100:.1f}%)"
+        elif result.stressed_metrics.portfolio_irr < 0:
+            # For moderately negative IRRs
+            row["Portfolio IRR"] = f"Loss ({result.stressed_metrics.portfolio_irr*100:.2f}%)"
+        elif abs(result.stressed_metrics.portfolio_irr) > 1.0:
+            # Handle extremely large positive values (rare in credit)
+            row["Portfolio IRR"] = f"Extreme Gain ({result.stressed_metrics.portfolio_irr*100:.1f}%)"
+        else:
+            # Normal case - positive IRR
+            row["Portfolio IRR"] = f"{result.stressed_metrics.portfolio_irr * 100:.2f}%"
+            
+        # Format IRR change with description
+        irr_change = result.impact_summary.get('IRR Change (%)', np.nan)
+        if np.isnan(irr_change):
+            # If we have both valid IRRs, we can calculate the change directly
+            if not np.isnan(result.base_metrics.portfolio_irr) and not np.isnan(result.stressed_metrics.portfolio_irr):
+                irr_change = 100 * (result.stressed_metrics.portfolio_irr - result.base_metrics.portfolio_irr) / abs(result.base_metrics.portfolio_irr)
+                if abs(irr_change) > 500:
+                    direction = "+" if irr_change > 0 else ""
+                    row["IRR Change"] = f"Extreme ({direction}{min(abs(irr_change), 999.99):.0f}%)"
+                else:
+                    row["IRR Change"] = f"{irr_change:.2f}%"
+            else:
+                # If we can't calculate the change directly
+                if result.stressed_metrics.portfolio_irr < 0 and result.base_metrics.portfolio_irr > 0:
+                    row["IRR Change"] = "Turned negative"
+                elif result.stressed_metrics.portfolio_irr < -0.2:
+                    row["IRR Change"] = "Major loss"
+                else:
+                    row["IRR Change"] = "Not comparable"
+        elif abs(irr_change) > 500:
+            # Extreme changes
+            if irr_change < -500:
+                row["IRR Change"] = "Severe deterioration"
+            else:
+                row["IRR Change"] = f"Extreme (+{min(irr_change, 999.99):.0f}%)"
+        elif irr_change < -100:
+            # Significant negative change
+            row["IRR Change"] = f"Major decline ({irr_change:.0f}%)"
+        else:
+            row["IRR Change"] = f"{irr_change:.2f}%"
+        
+        # Format portfolio WAL with better error handling
+        if np.isnan(result.stressed_metrics.portfolio_wal):
+            row["Portfolio WAL"] = "Not calculable"
+        elif np.isinf(result.stressed_metrics.portfolio_wal):
+            row["Portfolio WAL"] = "∞"
+        else:
+            row["Portfolio WAL"] = f"{result.stressed_metrics.portfolio_wal:.2f} months"
+            
+        # Format WAL Change
+        wal_change = result.impact_summary.get('WAL Change (%)', np.nan)
+        if np.isnan(wal_change):
+            row["WAL Change"] = "Not calculable"
+        elif abs(wal_change) > 50:
+            row["WAL Change"] = f"Extreme ({wal_change:.1f}%)"
+        else:
+            row["WAL Change"] = f"{wal_change:.2f}%"
+        
+        # Format Default Impact with explanatory text for extreme values
+        default_impact = result.impact_summary.get('Default Impact (%)', np.nan)
+        if np.isnan(default_impact):
+            row["Default Impact"] = "Not calculable"
+        elif default_impact > 100:
+            row["Default Impact"] = f"Severe (+{min(default_impact, 999.99):.0f}%)"
+        elif default_impact < -50:
+            row["Default Impact"] = f"Improved ({default_impact:.0f}%)"
+        else:
+            row["Default Impact"] = f"{default_impact:.2f}%"
+        
+        # Format Volatility with better error handling
+        if np.isnan(result.stressed_metrics.volatility):
+            row["Volatility"] = "Not calculable"
+        elif np.isinf(result.stressed_metrics.volatility):
+            row["Volatility"] = "∞"
+        elif result.stressed_metrics.volatility > 10:
+            row["Volatility"] = f"Very high ({min(result.stressed_metrics.volatility, 99.9):.1f})"
+        else:
+            row["Volatility"] = f"{result.stressed_metrics.volatility:.2f}"
+            
+        # Format Volatility Change
+        vol_change = result.impact_summary.get('Cash Flow Volatility Change (%)', np.nan)
+        if np.isnan(vol_change):
+            row["Volatility Change"] = "Not calculable"
+        elif abs(vol_change) > 500:
+            direction = "increase" if vol_change > 0 else "decrease"
+            row["Volatility Change"] = f"Extreme {direction}"
+        else:
+            row["Volatility Change"] = f"{vol_change:.2f}%"
+        
         report_data.append(row)
+        print(f"Added row to report: {row}")
     
-    return pd.DataFrame(report_data)
+    df = pd.DataFrame(report_data)
+    print(f"Generated report with {len(df)} rows")
+    return df
 
 def plot_stress_test_impacts(results: Dict[str, StressTestResult], 
                            metrics: List[str] = None) -> plt.Figure:

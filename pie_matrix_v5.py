@@ -320,7 +320,7 @@ def build_figures(params: InputParams, sim: SimulationResults) -> Dict[str, go.F
         if n == 1:
             gross_moic[n] = 1 + params.monthly_interest
         else:
-            gross_moic[n] = sim.pmt_factors[n] * n
+            gross_moic[n] = (1 + params.monthly_interest) ** n
         total_return_n = sim.payment_by_tenor[n].sum()
         net_moic[n] = total_return_n / deployed[n] if deployed[n] > 0 else 0
 

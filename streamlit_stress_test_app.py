@@ -281,6 +281,23 @@ def main():
     with tab1:
         display_scenario_metrics(base_metrics, "Base Portfolio Metrics")
         
+        # Add explanation about IRR differences
+        st.markdown("""
+        <details>
+        <summary style="font-weight: bold; cursor: pointer; color: #4c78a8;">Why is portfolio IRR higher than tenor-specific IRRs? (click to expand)</summary>
+        <div style="padding: 1rem; background-color: #f8f9fa; border-radius: 0.5rem; margin-top: 0.5rem;">
+        <p>The discrepancy between portfolio IRR and tenor-specific IRRs occurs due to several financial mechanics:</p>
+        <ul>
+            <li><strong>Compounding effect:</strong> The portfolio IRR captures the compounding effect of continuously reinvesting returns over the full simulation period. Each individual tenor IRR only measures the return for a single lending cycle.</li>
+            <li><strong>Reinvestment at higher rates:</strong> When principal is repaid from shorter tenors, it gets reinvested across all tenors again at the full interest rate, creating a powerful compounding effect.</li>
+            <li><strong>Time horizon difference:</strong> The tenor IRRs represent individual investment cycles, while the portfolio IRR represents the entire simulation period with multiple reinvestment cycles.</li>
+            <li><strong>Cash flow structure:</strong> The portfolio IRR calculation uses the complete cash flow series from the entire portfolio lifecycle, including the initial outlay and all subsequent inflows.</li>
+        </ul>
+        <p>This is actually a realistic reflection of how private credit portfolios work - the yield on the overall portfolio over time can be substantially higher than what you might calculate by looking at the yields of individual investments, due to reinvestment and compounding over multiple cycles.</p>
+        </div>
+        </details>
+        """, unsafe_allow_html=True)
+        
         st.subheader("Portfolio Cashflow Breakdown")
         # Create dataframe for cashflow visualization
         cf_data = pd.DataFrame({

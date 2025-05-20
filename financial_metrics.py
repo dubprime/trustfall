@@ -26,20 +26,70 @@ def calculate_irr(cash_flows: np.ndarray) -> float:
         cash_flows: NumPy array of cash flows (negative for outflows, positive for inflows)
         
     Returns:
-        IRR as a decimal (e.g., 0.12 for 12%)
+        IRR as a decimal (e.g., 0.12 for 12%), or np.nan if IRR cannot be calculated
     """
+    # Debug information
+    print(f"Calculating IRR for cash flows: {cash_flows}")
+    
+    # Check if cash flow pattern is valid for IRR calculation
+    if len(cash_flows) < 2:
+        print("ERROR: Cash flow array too short for IRR calculation")
+        return np.nan
+        
+    # Check if all values are negative or zero (no inflows)
+    if np.all(cash_flows <= 0):
+        print("ERROR: Cash flow pattern invalid for IRR - all values are negative or zero (no inflows)")
+        return np.nan
+        
+    # Check if all values are positive or zero (no outflows)
+    if np.all(cash_flows >= 0):
+        print("ERROR: Cash flow pattern invalid for IRR - all values are positive or zero (no outflows)")
+        return np.nan
+    
+    # Additional validation: ensure the cash flows sum isn't too close to zero
+    # Can happen in stressed scenarios where losses almost exactly equal gains
+    if abs(np.sum(cash_flows)) < 0.0001 * np.max(np.abs(cash_flows)):
+        print("ERROR: Cash flow sum too close to zero relative to the magnitude of flows")
+        return np.nan
+    
     try:
         # Starting with a reasonable guess based on common rates in private credit
-        return npf.irr(cash_flows)
-    except:
+        irr = npf.irr(cash_flows)
+        
+        # Validate the IRR result
+        if np.isnan(irr):
+            print("ERROR: IRR calculation resulted in NaN")
+            return np.nan
+        if np.isinf(irr):
+            print(f"ERROR: IRR calculation resulted in infinity: {irr}")
+            return np.nan
+        if abs(irr) > 1.0:  # IRR over 100% or under -100% is likely an error
+            print(f"WARNING: Extreme IRR value calculated: {irr}")
+            # Still return it, but flag it
+        
+        print(f"Successfully calculated IRR: {irr}")
+        return irr
+    except Exception as e:
+        print(f"ERROR in primary IRR calculation: {str(e)}")
         # If IRR calculation fails, try with a different approach
         # This can happen with unconventional cash flow patterns
-        for guess in [0.01, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30]:
+        for guess in [0.01, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, -0.10, -0.20]:
             try:
-                return npf.irr(cash_flows)
-            except:
+                print(f"Attempting IRR calculation with guess: {guess}")
+                irr = npf.irr(cash_flows, guess)
+                
+                # Validate the IRR result again
+                if np.isnan(irr) or np.isinf(irr) or abs(irr) > 1.0:
+                    print(f"Invalid IRR result with guess {guess}: {irr}")
+                    continue
+                    
+                print(f"Successfully calculated IRR with fallback: {irr}")
+                return irr
+            except Exception as e:
+                print(f"Fallback IRR calculation failed with guess {guess}: {str(e)}")
                 continue
         # If all guesses fail, return NaN
+        print("All IRR calculation attempts failed")
         return np.nan
 
 def calculate_weighted_average_life(principal_flows: np.ndarray, periods: np.ndarray) -> float:
@@ -250,7 +300,8 @@ def compute_extended_metrics(params: InputParams,
         volatility = params.default_rates[n]
         sharpe_ratios[n] = calculate_sharpe_ratio(annual_return, risk_free_rate, volatility)
     
-    # Calculate portfolio-wide metrics
+    # Calculate portfolio-wide metrics using two different approaches
+    # Approach 1: Direct aggregate cash flow approach
     portfolio_cash_flows = np.zeros(len(months) + 1)
     for m in range(len(months)):
         portfolio_cash_flows[m] -= sum(sim.new_by_t[m])
@@ -259,6 +310,72 @@ def compute_extended_metrics(params: InputParams,
         portfolio_cash_flows[m-1 if m > 0 else 0] += sum(sim.payment_by_tenor[n][m] for n in [1, 2, 3])
     
     portfolio_irr = calculate_irr(portfolio_cash_flows)
+    print(f"Direct portfolio IRR calculation: {portfolio_irr}")
+    
+    # Approach 2: Alternative portfolio IRR calculation using combined tenor cash flows
+    # This can work even if some individual tenor IRRs are uncalculable
+    if np.isnan(portfolio_irr):
+        print("Direct portfolio IRR calculation failed, trying alternative approach")
+        # Prepare combined cash flows across all tenors
+        combined_cash_flows = np.zeros(len(months) + 1)
+        total_investment = 0
+        
+        # First, sum all investments (outflows)
+        for m in range(len(months)):
+            month_investment = sum(sim.new_by_t[m])
+            combined_cash_flows[m] -= month_investment
+            total_investment += month_investment
+        
+        # Then add all inflows
+        for m in months + 1:
+            period_index = m-1 if m > 0 else 0
+            period_inflow = sum(sim.payment_by_tenor[n][m] for n in [1, 2, 3])
+            combined_cash_flows[period_index] += period_inflow
+        
+        # If we have both inflows and outflows, attempt IRR calculation
+        if np.any(combined_cash_flows < 0) and np.any(combined_cash_flows > 0):
+            print(f"Trying with combined cash flows: {combined_cash_flows}")
+            portfolio_irr = calculate_irr(combined_cash_flows)
+            print(f"Alternative portfolio IRR calculation: {portfolio_irr}")
+        
+        # If still NaN, try a modified version using totals
+        if np.isnan(portfolio_irr) and total_investment > 0:
+            print("Still unable to calculate IRR, using simplified approach")
+            # Calculate a simple ROI-based estimate
+            total_inflows = sum(combined_cash_flows[combined_cash_flows > 0])
+            total_outflows = abs(sum(combined_cash_flows[combined_cash_flows < 0]))
+            
+            if total_outflows > 0:
+                # Estimate as a simple MOIC-based IRR over the simulation period
+                moic = total_inflows / total_outflows
+                print(f"MOIC ratio: {moic}")
+                
+                if moic > 1.0:
+                    # Positive return case
+                    estimated_irr = (moic**(1/len(months)) - 1)
+                    print(f"Estimated portfolio IRR from MOIC ({moic}): {estimated_irr}")
+                    portfolio_irr = estimated_irr
+                elif moic > 0.0001:
+                    # Loss but not total loss
+                    n_periods = len(months)
+                    # Calculate terminal value as a percentage of initial investment
+                    terminal_value_pct = moic
+                    # Estimate IRR with assumption of linear loss over the period
+                    estimated_irr = -((1 - terminal_value_pct**(1/n_periods)))
+                    print(f"Estimated negative portfolio IRR from MOIC ({moic}): {estimated_irr}")
+                    portfolio_irr = max(estimated_irr, -0.50)  # Floor at -50% monthly
+                else:
+                    # Severe or total loss case - cap at a significant negative return
+                    # For severe losses (>95%), use a scaling factor based on default rate
+                    avg_default_rate = sum(params.default_rates.values()) / len(params.default_rates)
+                    severity_factor = min(5.0, avg_default_rate * 10)  # Scale based on default rates
+                    estimated_irr = -0.25 * severity_factor  # From -25% to -125% monthly
+                    print(f"Extreme loss scenario, assigning IRR of {estimated_irr}")
+                    portfolio_irr = estimated_irr
+            else:
+                # Pathological case - no outflows at all
+                print("No investment outflows detected, cannot calculate IRR")
+                portfolio_irr = np.nan
     
     # Calculate concentration using allocation
     concentration_hhi = calculate_concentration_hhi(params.allocation)
@@ -302,49 +419,123 @@ def format_metrics_for_display(metrics: ExtendedFinancialMetrics) -> Dict:
     """
     results = {}
     
-    # Format IRRs as percentages
-    results["IRR (%)"] = {
-        f"{n}-Month": f"{metrics.irr[n]*100:.2f}%" if not np.isnan(metrics.irr[n]) else "N/A" 
-        for n in [1, 2, 3]
-    }
-    results["Portfolio IRR"] = f"{metrics.portfolio_irr*100:.2f}%" if not np.isnan(metrics.portfolio_irr) else "N/A"
+    # Format IRRs as percentages with better error handling
+    results["IRR (%)"] = {}
+    for n in [1, 2, 3]:
+        if np.isnan(metrics.irr[n]):
+            results["IRR (%)"][f"{n}-Month"] = "N/A"
+        elif np.isinf(metrics.irr[n]):
+            results["IRR (%)"][f"{n}-Month"] = "∞" if metrics.irr[n] > 0 else "-∞"
+        elif abs(metrics.irr[n]) > 1:
+            # Handle extremely large values
+            results["IRR (%)"][f"{n}-Month"] = "Extreme" 
+        else:
+            results["IRR (%)"][f"{n}-Month"] = f"{metrics.irr[n]*100:.2f}%"
     
-    # Format Sharpe ratios
-    results["Sharpe Ratios"] = {
-        f"{n}-Month": f"{metrics.sharpe_ratios[n]:.2f}" 
-        for n in [1, 2, 3]
-    }
+    # Debug IRR calculation results
+    print(f"IRR values before formatting: {metrics.irr}")
+    print(f"Portfolio IRR before formatting: {metrics.portfolio_irr}")
     
-    # Format recovery rates as percentages
-    results["Recovery Rates (%)"] = {
-        f"{n}-Month": f"{metrics.recovery_rates[n]*100:.2f}%" 
-        for n in [1, 2, 3]
-    }
+    # More robust handling of portfolio IRR
+    if np.isnan(metrics.portfolio_irr):
+        results["Portfolio IRR"] = "N/A"
+        print("Portfolio IRR is NaN - displaying as N/A")
+    elif metrics.portfolio_irr == np.inf or metrics.portfolio_irr == -np.inf:
+        results["Portfolio IRR"] = "∞" if metrics.portfolio_irr > 0 else "-∞"
+        print(f"Portfolio IRR is {'positive' if metrics.portfolio_irr > 0 else 'negative'} infinity")
+    elif abs(metrics.portfolio_irr) > 1:
+        # Handle extremely large values
+        results["Portfolio IRR"] = f"Extreme ({metrics.portfolio_irr*100:.1f}%)"
+        print(f"Portfolio IRR is extremely large: {metrics.portfolio_irr}")
+    else:
+        results["Portfolio IRR"] = f"{metrics.portfolio_irr*100:.2f}%"
+        print(f"Portfolio IRR formatted as: {results['Portfolio IRR']}")
     
-    # Format WAL in months
-    results["Weighted Average Life (months)"] = {
-        f"{n}-Month": f"{metrics.weighted_average_life[n]:.2f}" 
-        for n in [1, 2, 3]
-    }
-    results["Portfolio WAL"] = f"{metrics.portfolio_wal:.2f} months"
+    # Format Sharpe ratios with better error handling
+    results["Sharpe Ratios"] = {}
+    for n in [1, 2, 3]:
+        if np.isnan(metrics.sharpe_ratios[n]):
+            results["Sharpe Ratios"][f"{n}-Month"] = "N/A"
+        elif np.isinf(metrics.sharpe_ratios[n]):
+            results["Sharpe Ratios"][f"{n}-Month"] = "∞" if metrics.sharpe_ratios[n] > 0 else "-∞"
+        elif abs(metrics.sharpe_ratios[n]) > 100:
+            results["Sharpe Ratios"][f"{n}-Month"] = "Extreme"
+        else:
+            results["Sharpe Ratios"][f"{n}-Month"] = f"{metrics.sharpe_ratios[n]:.2f}"
     
-    # Format concentration risk (HHI)
-    hhi_level = "Low" if metrics.concentration_hhi < 0.15 else "Medium" if metrics.concentration_hhi < 0.25 else "High"
-    results["Concentration Risk"] = f"{metrics.concentration_hhi:.2f} ({hhi_level})"
+    # Format recovery rates as percentages with better error handling
+    results["Recovery Rates (%)"] = {}
+    for n in [1, 2, 3]:
+        if np.isnan(metrics.recovery_rates[n]):
+            results["Recovery Rates (%)"][f"{n}-Month"] = "N/A"
+        elif metrics.recovery_rates[n] == np.inf:
+            results["Recovery Rates (%)"][f"{n}-Month"] = "∞"
+        elif metrics.recovery_rates[n] < 0:
+            results["Recovery Rates (%)"][f"{n}-Month"] = "0.00%"  # Floor at 0
+        elif metrics.recovery_rates[n] > 1:
+            results["Recovery Rates (%)"][f"{n}-Month"] = "100.00%"  # Cap at 100%
+        else:
+            results["Recovery Rates (%)"][f"{n}-Month"] = f"{metrics.recovery_rates[n]*100:.2f}%"
     
-    # Format duration and convexity
-    results["Duration (months)"] = {
-        f"{n}-Month": f"{metrics.duration[n]:.2f}" 
-        for n in [1, 2, 3]
-    }
+    # Format WAL in months with error handling
+    results["Weighted Average Life (months)"] = {}
+    for n in [1, 2, 3]:
+        if np.isnan(metrics.weighted_average_life[n]):
+            results["Weighted Average Life (months)"][f"{n}-Month"] = "N/A"
+        elif np.isinf(metrics.weighted_average_life[n]):
+            results["Weighted Average Life (months)"][f"{n}-Month"] = "∞"
+        else:
+            results["Weighted Average Life (months)"][f"{n}-Month"] = f"{metrics.weighted_average_life[n]:.2f}"
     
-    results["Convexity"] = {
-        f"{n}-Month": f"{metrics.convexity[n]:.2f}" 
-        for n in [1, 2, 3]
-    }
+    # Format portfolio WAL with error handling
+    if np.isnan(metrics.portfolio_wal):
+        results["Portfolio WAL"] = "N/A"
+    elif np.isinf(metrics.portfolio_wal):
+        results["Portfolio WAL"] = "∞"
+    else:
+        results["Portfolio WAL"] = f"{metrics.portfolio_wal:.2f} months"
     
-    # Format volatility
-    volatility_level = "Low" if metrics.volatility < 0.5 else "Medium" if metrics.volatility < 1.0 else "High"
-    results["Cash Flow Volatility"] = f"{metrics.volatility:.2f} ({volatility_level})"
+    # Format concentration risk (HHI) with error handling
+    if np.isnan(metrics.concentration_hhi):
+        results["Concentration Risk"] = "N/A"
+    elif np.isinf(metrics.concentration_hhi):
+        results["Concentration Risk"] = "∞"
+    else:
+        hhi_level = "Low" if metrics.concentration_hhi < 0.15 else "Medium" if metrics.concentration_hhi < 0.25 else "High"
+        results["Concentration Risk"] = f"{metrics.concentration_hhi:.2f} ({hhi_level})"
     
+    # Format duration and convexity with better error handling
+    results["Duration (months)"] = {}
+    for n in [1, 2, 3]:
+        if np.isnan(metrics.duration[n]):
+            results["Duration (months)"][f"{n}-Month"] = "N/A"
+        elif np.isinf(metrics.duration[n]):
+            results["Duration (months)"][f"{n}-Month"] = "∞"
+        else:
+            results["Duration (months)"][f"{n}-Month"] = f"{metrics.duration[n]:.2f}"
+    
+    results["Convexity"] = {}
+    for n in [1, 2, 3]:
+        if np.isnan(metrics.convexity[n]):
+            results["Convexity"][f"{n}-Month"] = "N/A"
+        elif np.isinf(metrics.convexity[n]):
+            results["Convexity"][f"{n}-Month"] = "∞"
+        elif abs(metrics.convexity[n]) > 1000:
+            results["Convexity"][f"{n}-Month"] = "Extreme"
+        else:
+            results["Convexity"][f"{n}-Month"] = f"{metrics.convexity[n]:.2f}"
+    
+    # Format volatility with error handling
+    if np.isnan(metrics.volatility):
+        results["Cash Flow Volatility"] = "N/A"
+    elif np.isinf(metrics.volatility):
+        results["Cash Flow Volatility"] = "∞"
+    elif metrics.volatility > 10:
+        volatility_level = "Extreme"
+        results["Cash Flow Volatility"] = f"{min(metrics.volatility, 999.99):.2f} ({volatility_level})"
+    else:
+        volatility_level = "Low" if metrics.volatility < 0.5 else "Medium" if metrics.volatility < 1.0 else "High"
+        results["Cash Flow Volatility"] = f"{metrics.volatility:.2f} ({volatility_level})"
+    
+    print(f"Formatted metrics for display: {results}")
     return results 

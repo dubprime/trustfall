@@ -136,3 +136,10 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU Affero General Public License along with this program. If not, see https://www.gnu.org/licenses/.
 
 https://www.linkedin.com/posts/vincent-lucero_github-dubprimemythral-mythral-from-original-activity-7324903865089171456-2YZo?utm_source=share&utm_medium=member_desktop&rcm=ACoAAAT4nS4BCc0uvhjl5cK8VfFtWKFPuI0Z3w0
+
+
+Shawshank Redemption Part 2
+
+"the kingdom of God is within you" from Luke 17:21 suggests that goodness and the potential for the kingdom of God are present within each person, not just in external events or locations. This implies that individuals have the capacity to experience and embody the divine within themselves." -Luke 17:21
+
+https://youtu.be/w8HdOHrc3OQ?si=kd8mCQA6vD2ZnGLg&t=151 

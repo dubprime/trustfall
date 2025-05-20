@@ -90,7 +90,6 @@ def load_inputs() -> InputParams:
 
     # Sidebar Controls
     with st.sidebar.expander("Settings", expanded=True):
-        st.header("Loan Allocation Settings")
         # reuse a1,a2,a3
         st.header("Portfolio Parameters")
         init_cap = st.number_input("Initial Capital ($)", value=100_000)
@@ -233,26 +232,29 @@ def build_and_render(params: InputParams, sim: SimulationResults):
     fig_ost.update_layout(barmode="stack", xaxis_title="Month", yaxis_title="Outstanding Principal ($)")
     st.plotly_chart(fig_ost, use_container_width=True)
 
-    # Defaults chart
+    st.subheader("Defaults by Tenor (Stacked)")
     df_def = pd.DataFrame({"Month": sim.months, **{f"{n}-Month Default": sim.default_by_tenor[n][sim.months] for n in TERMS}})
     fig_def = px.bar(df_def, x="Month", y=[f"{n}-Month Default" for n in TERMS], barmode="stack", labels={"value":"Defaults ($)"}, color_discrete_sequence=list(COLORS.values()))
     st.plotly_chart(fig_def, use_container_width=True)
 
-    # Other charts reuse existing color logic...
+    st.subheader("Monthly Interest Cashflows by Tenor")
     df_int = pd.DataFrame({"Month": sim.months, **{f"{n}-Month Interest": sim.interest_by_tenor[n][sim.months] for n in TERMS}})
     fig_int = px.bar(df_int, x="Month", y=[f"{n}-Month Interest" for n in TERMS], barmode="stack", color_discrete_sequence=list(COLORS.values()))
     st.plotly_chart(fig_int, use_container_width=True)
 
+    st.subheader("Monthly Principal Repaid by Tenor")
     df_prin = pd.DataFrame({"Month": sim.months, **{f"{n}-Month Principal": sim.principal_by_tenor[n][sim.months] for n in TERMS}})
     fig_prin = px.bar(df_prin, x="Month", y=[f"{n}-Month Principal" for n in TERMS], barmode="stack", color_discrete_sequence=list(COLORS.values()))
     st.plotly_chart(fig_prin, use_container_width=True)
 
+    st.subheader("Net Outstanding by Tenor")
     fig_net = go.Figure()
     for n in TERMS:
         fig_net.add_trace(go.Scatter(x=sim.months, y=sim.out_net[n], name=f"{n}-Month Net", mode="lines+markers", line=dict(color=COLORS[n])))
     fig_net.update_layout(xaxis_title="Month", yaxis_title="Net Outstanding ($)")
     st.plotly_chart(fig_net, use_container_width=True)
 
+    st.subheader("Yield Curve (Gross vs Net MOIC)")
     df_yld = pd.DataFrame({"Tenor": [f"{n}-Month" for n in TERMS],
                            "Gross MOIC": [(1+params.monthly_interest)**n for n in TERMS],
                            "Net MOIC": [sim.payment_by_tenor[n].sum()/sim.new_by_t[:,i].sum() if sim.new_by_t[:,i].sum()>0 else 0 for i,n in enumerate(TERMS)]})
@@ -260,29 +262,29 @@ def build_and_render(params: InputParams, sim: SimulationResults):
     st.plotly_chart(fig_yld, use_container_width=True)
 
     # Guided Cashflow Breakouts unchanged...
-    df_origin=pd.DataFrame(sim.new_by_t,columns=[f"{n}-Month Orig" for n in TERMS]).assign(Month=sim.months)
     st.subheader("Step 1: New Originations by Tenor")
+    df_origin=pd.DataFrame(sim.new_by_t,columns=[f"{n}-Month Orig" for n in TERMS]).assign(Month=sim.months)
     with st.expander("Details and chart",expanded=False):
         st.dataframe(df_origin.set_index('Month').style.format("{:,.2f}"))
         st.plotly_chart(px.bar(df_origin,x="Month",y=[f"{n}-Month Orig" for n in TERMS]),use_container_width=True)
 
-    df_inflow=pd.DataFrame({'Month':np.arange(len(sim.payment_schedule)),'Inflow':sim.payment_schedule})
     st.subheader("Step 2: Scheduled Cash Inflows")
+    df_inflow=pd.DataFrame({'Month':np.arange(len(sim.payment_schedule)),'Inflow':sim.payment_schedule})
     with st.expander("Details and trend",expanded=False):
         st.dataframe(df_inflow.set_index('Month').style.format("{:,.2f}"))
         fig_i=px.line(df_inflow,x="Month",y="Inflow",markers=True)
         fig_i.update_layout(yaxis_title="Cumulative Inflow",yaxis=dict(tickformat="$,"))
         st.plotly_chart(fig_i,use_container_width=True)
 
-    df_metrics=pd.DataFrame({'Month':sim.months+1,'Defaults':sim.per_period_defaults,'Interest':sim.per_period_interest,'Reinvested':sim.per_period_principal})
     st.subheader("Step 3: Monthly Cashflow Components")
+    df_metrics=pd.DataFrame({'Month':sim.months+1,'Defaults':sim.per_period_defaults,'Interest':sim.per_period_interest,'Reinvested':sim.per_period_principal})
     with st.expander("Breakdown of defaults, interest, reinvestment",expanded=False):
         st.dataframe(df_metrics.set_index('Month').style.format("{:,.2f}"))
         st.plotly_chart(px.area(df_metrics,x="Month",y=['Defaults','Interest','Reinvested'],color_discrete_sequence=list(COLORS.values())),use_container_width=True)
 
+    st.subheader("Step 4: Cumulative Cashflow Tally")
     df_cum=df_metrics.copy()
     df_cum[['Cum Defaults','Cum Interest','Cum Reinvested']]=df_cum[['Defaults','Interest','Reinvested']].cumsum()
-    st.subheader("Step 4: Cumulative Cashflow Tally")
     with st.expander("See cumulative build-up",expanded=False):
         st.dataframe(df_cum.set_index('Month').style.format("{:,.2f}"))
         st.plotly_chart(px.area(df_cum,x="Month",y=['Cum Defaults','Cum Interest','Cum Reinvested'],color_discrete_sequence=list(COLORS.values())),use_container_width=True)

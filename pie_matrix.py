@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import warnings
 
 # ─── Try importing Streamlit ─────────────────────────────────────────────────
 try:
@@ -16,6 +17,8 @@ except ModuleNotFoundError:
     warnings.warn(
         "Streamlit is not installed. Please install it with `pip install streamlit`."
     )
+
+warnings.filterwarnings("ignore", category=FutureWarning, module="plotly")
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 CSS = """

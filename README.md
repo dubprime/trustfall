@@ -125,3 +125,14 @@ See the [Financial Validation Checklist](FINANCE_TODO.md) for current developmen
 3. Ensure financial soundness of all calculations
 4. Submit pull requests with detailed explanations
 
+
+## Legal
+This file is part of Mythral AI™ which is owned by DubPrime, Inc. Copyright (C) 2025 Vincent Lucero vincent@dubprime.com https://www.linkedin.com/in/vincent-lucero/
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License along with this program. If not, see https://www.gnu.org/licenses/.
+
+https://www.linkedin.com/posts/vincent-lucero_github-dubprimemythral-mythral-from-original-activity-7324903865089171456-2YZo?utm_source=share&utm_medium=member_desktop&rcm=ACoAAAT4nS4BCc0uvhjl5cK8VfFtWKFPuI0Z3w0
